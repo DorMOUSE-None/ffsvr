@@ -59,7 +59,7 @@ int fftcpAccept(char *err, int sockfd, char *ip, uint16_t *port) {
     int acptfd;
 
     struct sockaddr sa;
-    socklen_t saLen;
+    socklen_t saLen = sizeof(struct sockaddr);
     
     if ((acptfd = accept(sockfd, &sa, &saLen)) == -1) {
         fftcpSetError(err, "accept: %s(errno: %d)\n", strerror(errno), errno);
