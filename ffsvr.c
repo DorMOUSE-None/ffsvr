@@ -11,7 +11,9 @@
 #include <netinet/in.h>
 #include <netdb.h>
 
+#include "ffclt.h"
 #include "fftcp.h"
+#include "ffevent.h"
 
 #define FFSVR_VERSION "0.1"
 #define FFSVR_DEFAULT_PORT "3960"
@@ -22,16 +24,18 @@
 #define FFSVR_WARN 2
 #define FFSVR_ERROR 3
 
-#define RECV_BUF_LEN 1024
-#define SEND_BUF_LEN 1024
-
 struct ffsvrServer {
     char *port;             // 监听端口
     char *bindaddr;         // 绑定地址 
     int fd;                 // socket 文件描述符
 
+    char *err;              // error message
     char *logfile;          // 日志文件
     int verbosity;          // verbose
+
+    ffEventLoop *eventLoop; // event loop
+
+    char *workdir;          // 工作目录
 };
 
 static struct ffsvrServer server;
@@ -74,12 +78,10 @@ static void banner() {
 |_|   |_|   |____/  \\_/  |_| \\_\\");
 }
 
-char *recv_buf, *send_buf;
-int recv_buf_len, send_buf_len;
 
 void http_handle(int acptfd, struct sockaddr_in *addr, socklen_t addrlen);
 
-void usage()
+static void usage()
 {
     fprintf(stderr, "Usage: ffsvr [option]\n");
     fprintf(stderr, "\t-l ip\n");
@@ -87,111 +89,97 @@ void usage()
     fprintf(stderr, "\t-h\n");
 }
 
-void initServerConfig() {
+static void initServer() {
     server.port = FFSVR_DEFAULT_PORT;
     server.bindaddr = NULL;
 
+    server.err = (char *) malloc(FF_TCP_ERR_LEN);
     server.logfile = NULL;
     server.verbosity = FFSVR_DEBUG;
+
+    server.eventLoop = NULL;
+    server.workdir = NULL;
 }
 
-int main(int argc, char **argv)
-{
-    initServerConfig();
-    banner();
-    ffsvrLog(FFSVR_DEBUG, "%s", "Hello FFSVR!");
-    const char *ip_bind = NULL;
-    const char *port_listen = "3960";
-    int sockfd;
-    int backlog = 5;
-    int return_code;
-    struct addrinfo hint, *rst;
-
-    recv_buf = (char *) malloc(RECV_BUF_LEN);
-    recv_buf_len = RECV_BUF_LEN;
-    send_buf = (char *) malloc(SEND_BUF_LEN);
-    send_buf_len = SEND_BUF_LEN;
-    
+static void configServer(int argc, char **argv) {
     int opt;
     while ((opt = getopt(argc, argv, "l:p:h")) != -1) 
     {
         switch (opt)
         {
             case 'l':
-                ip_bind = strdup(optarg);
+                server.bindaddr = strdup(optarg);
                 break;
             case 'p':
-                port_listen = strdup(optarg);
+                server.port = strdup(optarg);
                 break;
             case 'h':
             default:
                 usage();
-                return 0;
+                return;
         }
-    }
-
-    char *err = (char *) malloc(FF_TCP_ERR_LEN);
-
-    if ((sockfd = fftcpServer(&err, port_listen, ip_bind)) == FF_TCP_ERR) { 
-        fprintf(stderr, "%s\n", err);
-        free(err);
-        return 0;
-    }
-
-    while (1)
-    {
-        char *ip = (char *) malloc(INET_ADDRSTRLEN);
-        uint16_t port;
-        int acptfd;
-        if ((acptfd = fftcpAccept(err, sockfd, ip, &port)) == FF_TCP_ERR) {
-            fprintf(stderr, "%s\n", err);
-            free(err);
-            return 0;
-        }
-        printf("Accepted %s:%d\n", ip, port);
-        int recv_len = recv(acptfd, recv_buf, recv_buf_len, 0);
-        if (recv_len == -1)
-        {
-            fprintf(stderr, "[ERROR] recv msg failed. %s (errno=%d)\n", strerror(errno), errno);
-            return 0;
-        }
-        recv_buf[recv_len] = '\0';
-        printf("[DEBUG] recv msg: %s\n", recv_buf);
-    
-        char *http_response = "HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\n1234567890";
-        int resp_len = strlen(http_response);
-        if (-1 == send(acptfd, http_response, resp_len, 0))
-        {
-            fprintf(stderr, "[ERROR] send msg failed. %s (errno=%d)\n", strerror(errno), errno);
-            return 0;
-        }
-           
-        /*http_handle(acptfd, (struct sockaddr_in *) &addr, addrlen);*/
     }
 }
 
-void http_handle(int acptfd, struct sockaddr_in *addr, socklen_t addrlen)
+void sendFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
+    struct ffcltClient *clt = (struct ffcltClient *) extraData;
+
+    // TODO: send response;
+}
+
+void recvFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
+    struct ffcltClient *clt = (struct ffcltClient *) extraData;
+    clt->recvBufLen = recv(fd, clt->recvBuf, clt->recvBufCap, 0);
+    if (clt->recvBufLen == -1)
+    {
+        ffsvrLog(FFSVR_ERROR, "recv from Client %s:%d Failed", clt->ip, clt->port);
+        return; 
+    }
+    clt->recvBuf[clt->recvBufLen] = '\0';
+}
+
+void acceptFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
+    struct ffcltClient *clt = ffcltInitClient();
+    if ((clt->fd = fftcpAccept(server.err, fd, clt->ip, clt->port)) == FF_TCP_ERR) {
+        ffsvrLog(FFSVR_ERROR, "%s", server.err);
+        free(server.err);
+        return; 
+    }
+    ffsvrLog(FFSVR_INFO, "Accept %s:%d", clt->ip, clt->port);
+
+    int retval;
+    retval = ffeventCreateFileEvent(eventLoop, clt->fd, FF_EVENT_MASKREAD, recvFunc, clt);
+    if (retval == FF_EVENT_ERR)
+        ffsvrLog(FFSVR_WARN, "Create New File Event Failed!");
+
+    retval = ffeventCreateFileEvent(eventLoop, clt->fd, FF_EVENT_MASKWRITE, sendFunc, clt);
+    if (retval == FF_EVENT_ERR)
+        ffsvrLog(FFSVR_WARN, "create New File Event Failed!");
+}
+
+int main(int argc, char **argv)
 {
-    char ip[14];
-    if (addr->sin_family == AF_INET6)
-        printf("Oh, My God!\n");
-    inet_ntop(addr->sin_family, &(addr->sin_addr), ip, sizeof ip);
-    printf("%s\n", ip);
+    // init default params
+    initServer();
+    banner();
+    ffsvrLog(FFSVR_DEBUG, "%s", "Hello FFSVR!");
+    int backlog = 5;
 
-    int recv_len = recv(acptfd, recv_buf, recv_buf_len, 0);
-    if (recv_len == -1)
-    {
-        fprintf(stderr, "[ERROR] recv msg failed. %s (errno=%d)\n", strerror(errno), errno);
-        return;
-    }
-    recv_buf[recv_len] = '\0';
-    printf("[DEBUG] recv msg: %s\n", recv_buf);
+    // read command params
+    configServer(argc, argv);
 
-    char *http_response = "HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\n1234567890";
-    int resp_len = strlen(http_response);
-    if (-1 == send(acptfd, http_response, resp_len, 0))
-    {
-        fprintf(stderr, "[ERROR] send msg failed. %s (errno=%d)\n", strerror(errno), errno);
-        return;
+    if ((server.fd = fftcpServer(server.err, server.port, server.bindaddr)) == FF_TCP_ERR) { 
+        fprintf(stderr, "%s\n", server.err);
+        free(server.err);
+        return 0;
     }
+
+    // create event loop
+    server.eventLoop = ffeventCreateEventLoop();
+
+    // register first event
+    ffeventCreateFileEvent(server.eventLoop, server.fd, FF_EVENT_MASKREAD, acceptFunc, NULL);
+
+    // start event loop
+    ffeventDispatch(server.eventLoop);
 }

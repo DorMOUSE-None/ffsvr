@@ -93,12 +93,12 @@ void ffeventProcess(ffEventLoop *eventLoop) {
                 mask |= FF_EVENT_MASKWRITE;
             if (fileEvent->mask & FF_EVENT_MASKERR && FD_ISSET(fd, &efds))
                 mask |= FF_EVENT_MASKERR;
+            // callback func
             fileEvent->func(eventLoop, fd, mask, fileEvent->extraData);
-
+            // next event
+            fileEvent = fileEvent->next;
         }
-
     }
-
 }
 
 void ffeventDispatch(ffEventLoop *eventLoop)
