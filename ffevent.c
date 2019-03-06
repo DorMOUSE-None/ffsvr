@@ -33,6 +33,8 @@ int ffeventCreateFileEvent(ffEventLoop *eventLoop, int fd, int mask, ffFileFunc 
     fileEvent->extraData = extraData;
     fileEvent->next = eventLoop->fileEvent;
     eventLoop->fileEvent = fileEvent;
+    if (eventLoop->maxfd < fd)
+        eventLoop->maxfd = fd;
 
     return FF_EVENT_OK;
 }

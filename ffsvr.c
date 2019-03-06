@@ -124,6 +124,15 @@ static void configServer(int argc, char **argv) {
 void sendFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
     struct ffcltClient *clt = (struct ffcltClient *) extraData;
 
+    clt->sendBuf = "OK 123456!";
+    clt->sendBufLen = 10;
+    
+    int retval = send(fd, clt->sendBuf, clt->sendBufLen, 0);
+    if (retval == -1)
+    {
+        ffsvrLog(FFSVR_ERROR, "send to Client %s:%d Failed", clt->ip, clt->port);
+        return;
+    }
     // TODO: send response;
 }
 

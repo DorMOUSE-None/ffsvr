@@ -4,9 +4,9 @@
 #define FF_EVENT_ERR -1
 #define FF_EVENT_OK 0
 
-#define FF_EVENT_MASKREAD 0
-#define FF_EVENT_MASKWRITE 1
-#define FF_EVENT_MASKERR 2
+#define FF_EVENT_MASKREAD 0b001
+#define FF_EVENT_MASKWRITE 0b010
+#define FF_EVENT_MASKERR 0b100
 
 struct ffEventLoop;
 struct ffFileEvent;
