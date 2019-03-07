@@ -135,6 +135,9 @@ void sendFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
         return;
     }
     // TODO: send response;
+    
+    // delete file Event
+    ffeventDeleteFileEvent(eventLoop, fd, mask);
 }
 
 void recvFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
@@ -148,6 +151,10 @@ void recvFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
         return; 
     }
     recvStr->buf[recvStr->len] = '\0';
+    
+    int retval = ffeventCreateFileEvent(eventLoop, clt->fd, FF_EVENT_MASKWRITE, sendFunc, clt);
+    if (retval == FF_EVENT_ERR)
+        ffsvrLog(FFSVR_WARN, "create New File Event Failed!");
 }
 
 void acceptFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
@@ -163,10 +170,6 @@ void acceptFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
     retval = ffeventCreateFileEvent(eventLoop, clt->fd, FF_EVENT_MASKREAD, recvFunc, clt);
     if (retval == FF_EVENT_ERR)
         ffsvrLog(FFSVR_WARN, "Create New File Event Failed!");
-
-    retval = ffeventCreateFileEvent(eventLoop, clt->fd, FF_EVENT_MASKWRITE, sendFunc, clt);
-    if (retval == FF_EVENT_ERR)
-        ffsvrLog(FFSVR_WARN, "create New File Event Failed!");
 }
 
 int main(int argc, char **argv)

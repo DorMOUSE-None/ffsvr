@@ -47,7 +47,7 @@ int ffeventDeleteFileEvent(ffEventLoop *eventLoop, int fd, int mask)
     while (fileEvent != NULL) {
         if (fileEvent->fd == fd && fileEvent->mask == mask) {
             if (prev == NULL) 
-                eventLoop = fileEvent->next;
+                eventLoop->fileEvent = fileEvent->next;
             else 
                 prev->next = fileEvent->next;
             free (fileEvent);
@@ -96,7 +96,8 @@ void ffeventProcess(ffEventLoop *eventLoop) {
             if (fileEvent->mask & FF_EVENT_MASKERR && FD_ISSET(fd, &efds))
                 mask |= FF_EVENT_MASKERR;
             // callback func
-            fileEvent->func(eventLoop, fd, mask, fileEvent->extraData);
+            if (mask != 0)
+                fileEvent->func(eventLoop, fd, mask, fileEvent->extraData);
             // next event
             fileEvent = fileEvent->next;
         }
