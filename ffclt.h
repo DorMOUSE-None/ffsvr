@@ -16,5 +16,6 @@ struct ffcltClient {
 };
 
 struct ffcltClient * ffcltInitClient();
+void ffcltCloseClient(struct ffcltClient *clt);
 
 #endif /* FF_CLT_H */

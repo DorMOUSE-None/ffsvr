@@ -17,3 +17,13 @@ struct ffcltClient * ffcltInitClient()
 
     return clt;
 }
+
+void ffcltCloseClient(struct ffcltClient *clt)
+{
+    // release strings
+    ffReleaseCurrentString(clt->recv);
+    ffReleaseCurrentString(clt->send);
+
+    free(clt->ip);
+    free(clt);
+}

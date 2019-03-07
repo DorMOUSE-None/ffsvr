@@ -125,7 +125,7 @@ void sendFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
     struct ffcltClient *clt = (struct ffcltClient *) extraData;
 
     ffstr *sendStr = clt->send;
-    sendStr->buf = "OK 123456!";
+    strcpy(sendStr->buf, "OK 123456!");
     sendStr->len = 10;
     
     int retval = send(fd, sendStr->buf, sendStr->len, 0);
@@ -149,6 +149,12 @@ void recvFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
     {
         ffsvrLog(FFSVR_ERROR, "recv from Client %s:%d Failed", clt->ip, clt->port);
         return; 
+    } else if (recvStr->len == 0)
+    {
+        ffsvrLog(FFSVR_INFO, "disconnect with Client %s:%d.", clt->ip, clt->port);
+        ffcltCloseClient(clt);
+        ffeventDeleteFileEvent(eventLoop, fd, mask);
+        return;
     }
     recvStr->buf[recvStr->len] = '\0';
     
