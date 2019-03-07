@@ -124,10 +124,11 @@ static void configServer(int argc, char **argv) {
 void sendFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
     struct ffcltClient *clt = (struct ffcltClient *) extraData;
 
-    clt->sendBuf = "OK 123456!";
-    clt->sendBufLen = 10;
+    ffstr *sendStr = clt->send;
+    sendStr->buf = "OK 123456!";
+    sendStr->len = 10;
     
-    int retval = send(fd, clt->sendBuf, clt->sendBufLen, 0);
+    int retval = send(fd, sendStr->buf, sendStr->len, 0);
     if (retval == -1)
     {
         ffsvrLog(FFSVR_ERROR, "send to Client %s:%d Failed", clt->ip, clt->port);
@@ -138,13 +139,15 @@ void sendFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
 
 void recvFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
     struct ffcltClient *clt = (struct ffcltClient *) extraData;
-    clt->recvBufLen = recv(fd, clt->recvBuf, clt->recvBufCap, 0);
-    if (clt->recvBufLen == -1)
+
+    ffstr *recvStr = clt->recv;
+    recvStr->len = recv(fd, recvStr->buf, recvStr->cap, 0);
+    if (recvStr->len == -1)
     {
         ffsvrLog(FFSVR_ERROR, "recv from Client %s:%d Failed", clt->ip, clt->port);
         return; 
     }
-    clt->recvBuf[clt->recvBufLen] = '\0';
+    recvStr->buf[recvStr->len] = '\0';
 }
 
 void acceptFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
