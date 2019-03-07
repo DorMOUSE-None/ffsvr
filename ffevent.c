@@ -96,10 +96,20 @@ void ffeventProcess(ffEventLoop *eventLoop) {
             if (fileEvent->mask & FF_EVENT_MASKERR && FD_ISSET(fd, &efds))
                 mask |= FF_EVENT_MASKERR;
             // callback func
-            if (mask != 0)
+            if (mask != 0) 
+            {
                 fileEvent->func(eventLoop, fd, mask, fileEvent->extraData);
-            // next event
-            fileEvent = fileEvent->next;
+
+                // after exec, fileEvent list may change. trace from head again
+                fileEvent = eventLoop->fileEvent;
+                // of course, clear current fd bit 
+                FD_CLR(fd, &rfds);
+                FD_CLR(fd, &wfds);
+                FD_CLR(fd, &efds);
+            } else {
+                // next event
+                fileEvent = fileEvent->next;
+            }
         }
     }
 }

@@ -159,7 +159,7 @@ void recvFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
 
 void acceptFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
     struct ffcltClient *clt = ffcltInitClient();
-    if ((clt->fd = fftcpAccept(server.err, fd, clt->ip, clt->port)) == FF_TCP_ERR) {
+    if ((clt->fd = fftcpAccept(server.err, fd, clt->ip, &clt->port)) == FF_TCP_ERR) {
         ffsvrLog(FFSVR_ERROR, "%s", server.err);
         free(server.err);
         return; 
