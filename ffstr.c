@@ -56,13 +56,31 @@ void ffAppendChar(ffstr *str, char c)
     str->buf[str->len] = '\0';
 }
 
+void ffAppendCString(ffstr *dest, char *src)
+{
+    int srcLen = strlen(src);
+    // not have enough space
+    if (dest->len + srcLen > dest->cap)
+    {
+        int capability = dest->cap + 1;
+        while (capability <= dest->len + srcLen)
+            capability <<= 1;
+        dest->buf = realloc(dest->buf, capability);
+        dest->cap = capability - 1;
+    }
+    strcpy(dest->buf+dest->len, src);
+    dest->len += srcLen;
+}
+
 void ffAppendString(ffstr *dest, ffstr *src)
 {
     // not have enough space
     if (dest->len + src->len > dest->cap)
     {
         int capability = dest->cap + 1;
-        dest->buf = realloc(dest->buf, capability <<= 1);
+        while (capability <= dest->len + src->len)
+            capability <<= 1;
+        dest->buf = realloc(dest->buf, capability);
         dest->cap = capability - 1;
     }
     strcpy(dest->buf+dest->len, src->buf);

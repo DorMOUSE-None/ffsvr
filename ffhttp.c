@@ -3,6 +3,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <errno.h>
 
 #include "ffhttp.h"
 #include "ffstr.h"
@@ -57,9 +58,10 @@ static void parseRequest(ffHttpRequest *request)
 static void coreHandle(ffHttpRequest *request, ffHttpResponse *response)
 {
     struct stat *fileStat = (struct stat *) malloc(sizeof(struct stat));
-    if (stat(request->target, fileStat) == -1)
+    if (stat(request->target->buf, fileStat) == -1)
     {
         // TODO: error
+        fprintf(stderr, "target:%s. %s (errno: %d)\n", request->target, strerror(errno), errno);
         return;
     }
 
@@ -67,7 +69,7 @@ static void coreHandle(ffHttpRequest *request, ffHttpResponse *response)
     
     // open target file
     int ffd;
-    if ((ffd = open(request->target, O_RDONLY)) == -1)
+    if ((ffd = open(request->target->buf, O_RDONLY)) == -1)
     {
         // TODO: error
         return;
@@ -93,11 +95,12 @@ static void encapsulate(ffHttpResponse *response)
     ffAppendString(response->raw, response->code);
     ffAppendChar(response->raw, FF_HTTP_SP);
     ffAppendString(response->raw, response->reason);
-    ffAppendString(response->raw, FF_HTTP_CRLF);
+    ffAppendCString(response->raw, FF_HTTP_CRLF);
 
-    ffAppendString(response->raw, FF_HTTP_CRLF);
+    ffAppendCString(response->raw, FF_HTTP_CRLF);
 
     ffAppendString(response->raw, response->body);
+    ffAppendCString(response->raw, FF_HTTP_CRLF);
 }
 
 ffHttpRequest * ffCreateHttpRequest()

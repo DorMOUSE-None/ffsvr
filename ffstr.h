@@ -11,6 +11,7 @@ ffstr * ffCreateString(int initCapability);
 ffstr * ffWrapperString(char *src);
 ffstr * ffCopyString(ffstr *str);
 void ffAppendChar(ffstr *str, char c);
+void ffAppendCString(ffstr *dest, char *src);
 void ffAppendString(ffstr *dest, ffstr *src);
 void ffReleaseString(ffstr *str);
 

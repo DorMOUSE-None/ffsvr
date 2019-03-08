@@ -6,7 +6,7 @@
 #define FF_HTTP_METHOD_GET "GET"
 #define FF_HTTP_METHOD_POST "POST"
 
-#define FF_HTTP_SP " "
+#define FF_HTTP_SP 32
 #define FF_HTTP_CRLF "\r\n"
 
 #define FF_HTTP_REQUEST_RAW_CAP 1024
