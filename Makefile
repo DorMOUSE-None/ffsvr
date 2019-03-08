@@ -1,12 +1,13 @@
 
-OBJ = fftcp.o ffsvr.o ffevent.o ffclt.o ffstr.o
+OBJ = fftcp.o ffsvr.o ffevent.o ffclt.o ffstr.o ffhttp.o
 PROGNAME = ffsvr
 
 all: ffsvr
 
 fftcp.o: fftcp.c fftcp.h
-ffsvr.o: ffsvr.c fftcp.h ffevent.h ffclt.h
-ffclt.o: ffclt.c ffclt.h ffstr.h
+ffhttp.o: ffhttp.c ffhttp.h ffstr.h
+ffsvr.o: ffsvr.c fftcp.h ffevent.h ffclt.h ffstr.h ffhttp.h
+ffclt.o: ffclt.c ffclt.h ffstr.h ffhttp.h
 ffevent.o: ffevent.c ffevent.h
 ffstr.o: ffstr.c ffstr.h
 

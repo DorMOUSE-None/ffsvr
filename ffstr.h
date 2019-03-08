@@ -1,16 +1,17 @@
 #ifndef FF_STR_H
 #define FF_STR_H
 
-struct ffStr {
+typedef struct ffStr {
     char *buf;      // str buffer
     int len;        // str length
     int cap;        // capability
-};
+} ffstr;
 
-typedef struct ffStr ffstr;
-
-ffstr * ffCreateNewString(int initCapability);
+ffstr * ffCreateString(int initCapability);
+ffstr * ffWrapperString(char *src);
+ffstr * ffCopyString(ffstr *str);
 void ffAppendChar(ffstr *str, char c);
-void ffReleaseCurrentString(ffstr *str);
+void ffAppendString(ffstr *dest, ffstr *src);
+void ffReleaseString(ffstr *str);
 
 #endif /* FF_STR_H */

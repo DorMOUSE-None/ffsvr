@@ -5,25 +5,25 @@
 
 #include "ffclt.h"
 #include "ffstr.h"
+#include "ffhttp.h"
 
-struct ffcltClient * ffcltInitClient() 
+ffcltClient * ffCreateClient() 
 {
-    struct ffcltClient *clt = (struct ffcltClient *) malloc(sizeof(struct ffcltClient));
+    ffcltClient *clt = (ffcltClient *) malloc(sizeof(ffcltClient));
 
     clt->ip = (char *) malloc(INET_ADDRSTRLEN);
 
-    clt->recv = ffCreateNewString(FFCLT_RECV_BUF_CAP);
-    clt->send = ffCreateNewString(FFCLT_SEND_BUF_CAP);
+    clt->request = ffCreateHttpRequest();
+    clt->response = ffCreateHttpResponse();
 
     return clt;
 }
 
-void ffcltCloseClient(struct ffcltClient *clt)
+void ffReleaseClient(struct ffcltClient *clt)
 {
-    // release strings
-    ffReleaseCurrentString(clt->recv);
-    ffReleaseCurrentString(clt->send);
-
+    // release request & response
+    ffReleaseRequest(clt->request);
+    ffReleaseResponse(clt->response);
     free(clt->ip);
     free(clt);
 }

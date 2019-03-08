@@ -13,7 +13,9 @@
 
 #include "ffclt.h"
 #include "fftcp.h"
+#include "ffhttp.h"
 #include "ffevent.h"
+#include "ffstr.h"
 
 #define FFSVR_VERSION "0.1"
 #define FFSVR_DEFAULT_PORT "3960"
@@ -38,7 +40,7 @@ struct ffsvrServer {
     char *workdir;          // 工作目录
 };
 
-static struct ffsvrServer server;
+struct ffsvrServer server;
 
 static void ffsvrLog(int logLevel, const char *fmt, ...) {
     va_list val;
@@ -124,10 +126,10 @@ static void configServer(int argc, char **argv) {
 void sendFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
     struct ffcltClient *clt = (struct ffcltClient *) extraData;
 
-    ffstr *sendStr = clt->send;
-    strcpy(sendStr->buf, "OK 123456!");
-    sendStr->len = 10;
-    
+    // handle http request to response
+    ffHttpHandle(clt->request, clt->response);
+
+    ffstr *sendStr = clt->response->raw;
     int retval = send(fd, sendStr->buf, sendStr->len, 0);
     if (retval == -1)
     {
@@ -143,7 +145,7 @@ void sendFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
 void recvFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
     struct ffcltClient *clt = (struct ffcltClient *) extraData;
 
-    ffstr *recvStr = clt->recv;
+    ffstr *recvStr = clt->request->raw;
     recvStr->len = recv(fd, recvStr->buf, recvStr->cap, 0);
     if (recvStr->len == -1)
     {
@@ -152,7 +154,7 @@ void recvFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
     } else if (recvStr->len == 0)
     {
         ffsvrLog(FFSVR_INFO, "disconnect with Client %s:%d.", clt->ip, clt->port);
-        ffcltCloseClient(clt);
+        ffReleaseClient(clt);
         ffeventDeleteFileEvent(eventLoop, fd, mask);
         return;
     }
@@ -164,7 +166,7 @@ void recvFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
 }
 
 void acceptFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
-    struct ffcltClient *clt = ffcltInitClient();
+    ffcltClient *clt = ffCreateClient();
     if ((clt->fd = fftcpAccept(server.err, fd, clt->ip, &clt->port)) == FF_TCP_ERR) {
         ffsvrLog(FFSVR_ERROR, "%s", server.err);
         free(server.err);
