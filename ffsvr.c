@@ -105,10 +105,14 @@ static void initServer() {
 
 static void configServer(int argc, char **argv) {
     int opt;
-    while ((opt = getopt(argc, argv, "l:p:h")) != -1) 
+    while ((opt = getopt(argc, argv, "d:l:p:h")) != -1) 
     {
         switch (opt)
         {
+            case 'd':
+                server.workdir = strdup(optarg);
+                ffHttpSetWorkdir(server.workdir);
+                break;
             case 'l':
                 server.bindaddr = strdup(optarg);
                 break;
@@ -127,16 +131,23 @@ void sendFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
     struct ffcltClient *clt = (struct ffcltClient *) extraData;
 
     // handle http request to response
-    ffHttpHandle(clt->request, clt->response);
+    if (ffHttpHandle(server.err, clt->request, clt->response) == FF_HTTP_ERR)
+    {
+        ffsvrLog(FFSVR_ERROR, server.err);
+        ffeventDeleteFileEvent(eventLoop, fd, mask);
+        // TODO: 404
+        return;
+    }
 
     ffstr *sendStr = clt->response->raw;
     int retval = send(fd, sendStr->buf, sendStr->len, 0);
     if (retval == -1)
     {
         ffsvrLog(FFSVR_ERROR, "send to Client %s:%d Failed", clt->ip, clt->port);
+        ffeventDeleteFileEvent(eventLoop, fd, mask);
         return;
     }
-    // TODO: send response;
+    ffsvrLog(FFSVR_DEBUG, "send message to Client %s:%d.", clt->ip, clt->port);
     
     // delete file Event
     ffeventDeleteFileEvent(eventLoop, fd, mask);
@@ -151,14 +162,17 @@ void recvFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
     {
         ffsvrLog(FFSVR_ERROR, "recv from Client %s:%d Failed", clt->ip, clt->port);
         return; 
-    } else if (recvStr->len == 0)
+    } 
+    else if (recvStr->len == 0)
     {
         ffsvrLog(FFSVR_INFO, "disconnect with Client %s:%d.", clt->ip, clt->port);
         ffReleaseClient(clt);
         ffeventDeleteFileEvent(eventLoop, fd, mask);
         return;
     }
+
     recvStr->buf[recvStr->len] = '\0';
+    ffsvrLog(FFSVR_DEBUG, "recv message from Client %s:%d. message: %s", clt->ip, clt->port, recvStr->buf);
     
     int retval = ffeventCreateFileEvent(eventLoop, clt->fd, FF_EVENT_MASKWRITE, sendFunc, clt);
     if (retval == FF_EVENT_ERR)

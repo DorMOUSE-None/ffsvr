@@ -1,12 +1,24 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <errno.h>
 
 #include "ffhttp.h"
 #include "ffstr.h"
+
+static void ffhttpSetError(char *err, const char *fmt, ...)
+{
+    va_list val;
+    
+    if (err == NULL)
+        return;
+    va_start(val, fmt);
+    vsnprintf(err, FF_HTTP_ERR_LEN, fmt, val);
+    va_end(val);
+}
 
 /**
  * request-line = method SP request-target SP HTTP-version CRLF
@@ -33,9 +45,16 @@ static void parseRequestLine(ffHttpRequest *request, int *p)
     (*p)++;
 
     // parse target
-    request->target = ffCreateString(16);
     for (;*((raw->buf)+*p) != ' ';(*p)++)
+    {
+        if (*(raw->buf+*p) == '?')
+        {
+            for (;*(raw->buf+*p) != ' ';(*p)++);
+            (*p)--;
+            continue;
+        }
         ffAppendChar(request->target, *(raw->buf+*p));
+    }
 
     // skip space 
     (*p)++;
@@ -55,37 +74,47 @@ static void parseRequest(ffHttpRequest *request)
     parseRequestLine(request, &p);
 }
 
-static void coreHandle(ffHttpRequest *request, ffHttpResponse *response)
+static int coreHandle(char *err, ffHttpRequest *request, ffHttpResponse *response)
 {
     struct stat *fileStat = (struct stat *) malloc(sizeof(struct stat));
+    fprintf(stderr, "read file %s\n", request->target->buf);
     if (stat(request->target->buf, fileStat) == -1)
     {
-        // TODO: error
-        fprintf(stderr, "target:%s. %s (errno: %d)\n", request->target, strerror(errno), errno);
-        return;
+        ffhttpSetError("stat file %s failed. %s (errno: %d)\n", request->target->buf, strerror(errno), errno); 
+        return FF_HTTP_ERR;
     }
 
     response->body = ffCreateString(fileStat->st_size);
+    free(fileStat);
     
     // open target file
     int ffd;
     if ((ffd = open(request->target->buf, O_RDONLY)) == -1)
     {
-        // TODO: error
-        return;
+        ffhttpSetError("open file %s failed. %s (errno: %d)\n", request->target->buf, strerror(errno), errno); 
+        return FF_HTTP_ERR;
     }
 
     // read target file
     if ((response->body->len = read(ffd, response->body->buf, response->body->cap)) == -1)
     {
-        // TODO: error
-        return;
+        ffhttpSetError("read file %s failed. %s (errno: %d)\n", request->target->buf, strerror(errno), errno); 
+        return FF_HTTP_ERR;
     }
 
     // copy request version to response
     response->version = ffCopyString(request->version);
     response->code = ffWrapperString("200");
     response->reason = ffWrapperString("OK");
+
+    // generate header 
+    response->contentLength = ffCreateString(8);
+    sprintf(response->contentLength->buf, "%d", response->body->len);
+    response->contentLength->len = strlen(response->contentLength->buf);
+
+    response->server = ffWrapperString(FF_HTTP_SERVER);
+
+    return FF_HTTP_OK;
 }
 
 static void encapsulate(ffHttpResponse *response)
@@ -97,10 +126,24 @@ static void encapsulate(ffHttpResponse *response)
     ffAppendString(response->raw, response->reason);
     ffAppendCString(response->raw, FF_HTTP_CRLF);
 
+    ffAppendCString(response->raw, "server: ");
+    ffAppendString(response->raw, response->server);
+    ffAppendCString(response->raw, FF_HTTP_CRLF);
+    ffAppendCString(response->raw, "content-length: ");
+    ffAppendString(response->raw, response->contentLength);
+    ffAppendCString(response->raw, FF_HTTP_CRLF);
+
     ffAppendCString(response->raw, FF_HTTP_CRLF);
 
     ffAppendString(response->raw, response->body);
     ffAppendCString(response->raw, FF_HTTP_CRLF);
+}
+
+void ffHttpSetWorkdir(char *dir)
+{
+    if (workdir != NULL)
+        ffReleaseString(workdir);
+    workdir = ffWrapperString(dir);
 }
 
 ffHttpRequest * ffCreateHttpRequest()
@@ -132,12 +175,15 @@ ffHttpResponse * ffCreateHttpResponse()
  * start-line = status-line
  * status-line = HTTP-version SP status-code SP reason-phrase CRLF
  */
-int ffHttpHandle(ffHttpRequest *request, ffHttpResponse *response)
+int ffHttpHandle(char *err, ffHttpRequest *request, ffHttpResponse *response)
 {
+    // init prefix of target
+    request->target = ffCopyString(workdir);
     // parse request raw message
     parseRequest(request);
     // core handle to read request and make response
-    coreHandle(request, response);
+    if (coreHandle(err, request, response) == FF_HTTP_ERR)
+        return FF_HTTP_ERR;
     // encapsulate response
     encapsulate(response);
 }
