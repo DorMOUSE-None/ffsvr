@@ -11,6 +11,22 @@ FFSVR
 
 Server for driver my personal blog site. (in building);
 
+## Usage
+
+**1. clone repository from remote**
+```sh
+git clone https://github.com/DorMOUSE-None/ffsvr.git
+```
+**2. build binary file**
+```sh
+make
+```
+
+**3. run**
+```sh
+./ffsvr
+```
+
 ## Execute Sample
 ```
 07 Mar 13:34:03 .
