@@ -86,9 +86,11 @@ void http_handle(int acptfd, struct sockaddr_in *addr, socklen_t addrlen);
 static void usage()
 {
     fprintf(stderr, "Usage: ffsvr [option]\n");
+    fprintf(stderr, "\t-d workdir\n");
     fprintf(stderr, "\t-l ip\n");
     fprintf(stderr, "\t-p port\n");
     fprintf(stderr, "\t-h\n");
+    exit(0);
 }
 
 static void initServer() {
