@@ -5,7 +5,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <time.h>
-#include <sys/socket.h>
+#include <sys/epoll.h>
 #include <sys/types.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -14,11 +14,12 @@
 #include "ffclt.h"
 #include "fftcp.h"
 #include "ffhttp.h"
-#include "ffevent.h"
 #include "ffstr.h"
 
 #define FFSVR_VERSION "0.1"
 #define FFSVR_DEFAULT_PORT "3960"
+#define FFSVR_EVENTS_BLOCKS 100
+#define FFSVR_MAX_FDS 65536
 
 /* Log Levels */
 #define FFSVR_DEBUG 0
@@ -30,17 +31,22 @@ struct ffsvrServer {
     char *port;             // 监听端口
     char *bindaddr;         // 绑定地址 
     int fd;                 // socket 文件描述符
+    int epfd;               // epoll file descriptor
 
     char *err;              // error message
     char *logfile;          // 日志文件
     int verbosity;          // verbose
 
-    ffEventLoop *eventLoop; // event loop
-
     char *workdir;          // 工作目录
 };
 
+struct ffsvrFd {
+    void *ptr;
+    void *extra;
+};
+
 struct ffsvrServer server;
+struct ffsvrFd fd_data[65536];
 
 static void ffsvrLog(int logLevel, const char *fmt, ...) {
     va_list val;
@@ -68,7 +74,7 @@ static void ffsvrLog(int logLevel, const char *fmt, ...) {
     fflush(fp);
 
     if (server.logfile)
-        close(fp);
+        pclose(fp);
 }
 
 static void banner() {
@@ -101,7 +107,6 @@ static void initServer() {
     server.logfile = NULL;
     server.verbosity = FFSVR_DEBUG;
 
-    server.eventLoop = NULL;
     server.workdir = NULL;
 }
 
@@ -129,14 +134,14 @@ static void configServer(int argc, char **argv) {
     }
 }
 
-void sendFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
+void (*ep_handler)(int epfd, int fd, void *extraData);
+void sendFunc(int epfd, int fd, void *extraData) {
+    epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
     struct ffcltClient *clt = (struct ffcltClient *) extraData;
 
     // handle http request to response
-    if (ffHttpHandle(server.err, clt->request, clt->response) == FF_HTTP_ERR)
-    {
+    if (ffHttpHandle(server.err, clt->request, clt->response) == FF_HTTP_ERR) {
         ffsvrLog(FFSVR_ERROR, server.err);
-        ffeventDeleteFileEvent(eventLoop, fd, mask);
         // TODO: 404
         return;
     }
@@ -146,16 +151,13 @@ void sendFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
     if (retval == -1)
     {
         ffsvrLog(FFSVR_ERROR, "send to Client %s:%d Failed", clt->ip, clt->port);
-        ffeventDeleteFileEvent(eventLoop, fd, mask);
         return;
     }
     ffsvrLog(FFSVR_DEBUG, "send message to Client %s:%d.", clt->ip, clt->port);
-    
-    // delete file Event
-    ffeventDeleteFileEvent(eventLoop, fd, mask);
 }
 
-void recvFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
+void recvFunc(int epfd, int fd, void *extraData) {
+    epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
     struct ffcltClient *clt = (struct ffcltClient *) extraData;
 
     ffstr *recvStr = clt->request->raw;
@@ -169,19 +171,23 @@ void recvFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
     {
         ffsvrLog(FFSVR_INFO, "disconnect with Client %s:%d.", clt->ip, clt->port);
         ffReleaseClient(clt);
-        ffeventDeleteFileEvent(eventLoop, fd, mask);
         return;
     }
 
     recvStr->buf[recvStr->len] = '\0';
     ffsvrLog(FFSVR_DEBUG, "recv message from Client %s:%d. message: %s", clt->ip, clt->port, recvStr->buf);
     
-    int retval = ffeventCreateFileEvent(eventLoop, clt->fd, FF_EVENT_MASKWRITE, sendFunc, clt);
-    if (retval == FF_EVENT_ERR)
+    
+    struct epoll_event ep_event;
+    ep_event.events = EPOLLOUT;
+    ep_event.data.u32 = clt->fd;
+    fd_data[clt->fd].ptr = &sendFunc;
+    fd_data[clt->fd].extra = extraData;
+    if (epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ep_event) == -1)
         ffsvrLog(FFSVR_WARN, "create New File Event Failed!");
 }
 
-void acceptFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
+void acceptFunc(int epfd, int fd, void *extraData) {
     ffcltClient *clt = ffCreateClient();
     if ((clt->fd = fftcpAccept(server.err, fd, clt->ip, &clt->port)) == FF_TCP_ERR) {
         ffsvrLog(FFSVR_ERROR, "%s", server.err);
@@ -191,9 +197,14 @@ void acceptFunc(ffEventLoop *eventLoop, int fd, int mask, void *extraData) {
     ffsvrLog(FFSVR_INFO, "Accept %s:%d", clt->ip, clt->port);
 
     int retval;
-    retval = ffeventCreateFileEvent(eventLoop, clt->fd, FF_EVENT_MASKREAD, recvFunc, clt);
-    if (retval == FF_EVENT_ERR)
-        ffsvrLog(FFSVR_WARN, "Create New File Event Failed!");
+    struct epoll_event ep_event;
+    ep_event.events = EPOLLIN;
+    ep_event.data.u32 = clt->fd;
+    fd_data[clt->fd].ptr = &recvFunc;
+    fd_data[clt->fd].extra = clt;
+    if (epoll_ctl(epfd, EPOLL_CTL_ADD, clt->fd, &ep_event) == -1) {
+        ffsvrLog(FFSVR_WARN, "Create New File Event Failed! %s (errno: %d)\n", strerror(errno), errno);
+    }
 }
 
 int main(int argc, char **argv)
@@ -202,7 +213,6 @@ int main(int argc, char **argv)
     initServer();
     banner();
     ffsvrLog(FFSVR_DEBUG, "%s", "Hello FFSVR!");
-    int backlog = 5;
 
     // read command params
     configServer(argc, argv);
@@ -213,12 +223,31 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    // create event loop
-    server.eventLoop = ffeventCreateEventLoop();
-
+    // create eventpoll
+    if ((server.epfd = epoll_create(1)) == -1) {
+        ffsvrLog(FFSVR_ERROR, "%s (errno: %d)\n", strerror(errno), errno);
+        return 0;
+    }
     // register first event
-    ffeventCreateFileEvent(server.eventLoop, server.fd, FF_EVENT_MASKREAD, acceptFunc, NULL);
+    struct epoll_event ep_event;
+    ep_event.events = EPOLLIN;
+    ep_event.data.u32 = server.fd;
+    fd_data[server.fd].ptr = &acceptFunc;
+    fd_data[server.fd].extra = NULL;
+    epoll_ctl(server.epfd, EPOLL_CTL_ADD, server.fd, &ep_event);
 
     // start event loop
-    ffeventDispatch(server.eventLoop);
+    struct epoll_event ep_events[FFSVR_EVENTS_BLOCKS];
+    for (;;) {
+        int num = epoll_wait(server.epfd, ep_events, FFSVR_EVENTS_BLOCKS, 100);
+        if (num == -1) {
+            ffsvrLog(FFSVR_ERROR, "%s (errno: %d)\n", strerror(errno), errno);
+            continue;
+        }
+        for (int i=0, fd;i<num;i++) {
+            fd = ep_events[i].data.u32;
+            ep_handler = fd_data[fd].ptr;
+            (*ep_handler)(server.epfd, fd, fd_data[fd].extra);
+        }
+    }
 }
