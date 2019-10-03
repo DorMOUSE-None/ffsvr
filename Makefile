@@ -12,7 +12,7 @@ ffevent.o: ffevent.c ffevent.h
 ffstr.o: ffstr.c ffstr.h
 
 ffsvr: $(OBJ)
-	gcc -o $(PROGNAME) $(OBJ) -g
+	gcc -o $(PROGNAME) $(CFLAGS) $(OBJ) -g 
 
 .c.o:
 	gcc -c -g $<

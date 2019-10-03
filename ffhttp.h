@@ -15,8 +15,8 @@
 
 #define FF_HTTP_SERVER "ffsvr"
 
-#define FF_HTTP_REQUEST_RAW_CAP 1024
-#define FF_HTTP_RESPONSE_RAW_CAP 65536
+#define FF_HTTP_REQUEST_RAW_CAP 512
+#define FF_HTTP_RESPONSE_RAW_CAP 128
 
 static ffstr *workdir;
 

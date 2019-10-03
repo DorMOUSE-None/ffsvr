@@ -1,3 +1,5 @@
+#ifdef FF_HTTP_ON
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -207,3 +209,121 @@ void ffReleaseResponse(ffHttpResponse *response)
         ffReleaseString(response->raw);
     free(response);
 }
+
+#else
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdarg.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <errno.h>
+
+#include "ffhttp.h"
+#include "ffstr.h"
+
+static void ffhttpSetError(char *err, const char *fmt, ...)
+{
+    va_list val;
+    
+    if (err == NULL)
+        return;
+    va_start(val, fmt);
+    vsnprintf(err, FF_HTTP_ERR_LEN, fmt, val);
+    va_end(val);
+}
+
+static unsigned int stoi(char *str) 
+{
+    unsigned int value = 0;
+    for (str++;(*str)!=' ';str++) {
+        value *= 10;
+        value += (*str - '0');
+    }
+    return value;
+}
+
+static unsigned int primeCnt(unsigned int value) 
+{
+    // fatal function TODO:
+    return value;
+}
+
+static int length(unsigned int value) 
+{
+    int cnt = 0;
+    for (;value != 0;value/=10, cnt++);
+    return cnt;
+}
+
+void ffHttpSetWorkdir(char *dir)
+{
+    if (workdir != NULL)
+        ffReleaseString(workdir);
+    workdir = ffWrapperString(dir);
+}
+
+ffHttpRequest * ffCreateHttpRequest()
+{
+    ffHttpRequest *request = (ffHttpRequest *) malloc(sizeof(ffHttpRequest));
+    request->raw = ffCreateString(FF_HTTP_REQUEST_RAW_CAP);
+    return request;
+}
+
+ffHttpResponse * ffCreateHttpResponse()
+{
+    ffHttpResponse *response = (ffHttpResponse *) malloc(sizeof(ffHttpResponse));
+    response->raw = ffCreateString(FF_HTTP_RESPONSE_RAW_CAP);
+    return response;
+}
+
+/**
+ * HTTP Message Format
+ * http-message = start-line
+ *                * (header-field CRLF)
+ *                CRLF
+ *                [ message body ]
+ * 
+ * For request:
+ * start-line = request-line
+ * request-line = method SP request-target SP HTTP-version CRLF
+ *
+ * For response:
+ * start-line = status-line
+ * status-line = HTTP-version SP status-code SP reason-phrase CRLF
+ */
+int ffHttpHandle(char *err, ffHttpRequest *request, ffHttpResponse *response)
+{
+    /**
+     * locate PATH pointer
+     */
+    int p = 0;
+    ffstr *raw = request->raw;
+    // skip method
+    for (;*(raw->buf+p) != ' ';p++);
+    // skip space
+    p++;
+
+    unsigned int value = stoi(request->raw->buf+p);
+    unsigned int pi_n = primeCnt(value);
+
+    sprintf(response->raw->buf, "HTTP/1.1 200 OK\r\nContent-Length: %d\r\n\r\n%u=%u\r\n", length(value) + length(pi_n) + 1, value, pi_n);
+    response->raw->len = strlen(response->raw->buf);
+    return FF_HTTP_OK;
+}
+
+void ffReleaseRequest(ffHttpRequest *request)
+{
+    if (request->raw != NULL)
+        ffReleaseString(request->raw);
+    free(request);
+}
+
+void ffReleaseResponse(ffHttpResponse *response)
+{
+    if (response->raw != NULL)
+        ffReleaseString(response->raw);
+    free(response);
+}
+#endif
