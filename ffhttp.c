@@ -308,7 +308,7 @@ int ffHttpHandle(char *err, ffHttpRequest *request, ffHttpResponse *response)
     unsigned int value = stoi(request->raw->buf+p);
     unsigned int pi_n = primeCnt(value);
 
-    sprintf(response->raw->buf, "HTTP/1.1 200 OK\r\nContent-Length: %d\r\n\r\n%u=%u\r\n", length(value) + length(pi_n) + 1, value, pi_n);
+    sprintf(response->raw->buf, "HTTP/1.0 200 OK\r\nContent-Length: %d\r\nContent-Type: text/plain\r\n\r\n%u=%u\r\n", length(value) + length(pi_n) + 3, value, pi_n);
     response->raw->len = strlen(response->raw->buf);
     return FF_HTTP_OK;
 }

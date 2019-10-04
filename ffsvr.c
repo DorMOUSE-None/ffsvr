@@ -154,6 +154,8 @@ void sendFunc(int epfd, int fd, void *extraData) {
         return;
     }
     ffsvrLog(FFSVR_DEBUG, "send message to Client %s:%d.", clt->ip, clt->port);
+    close(fd);
+    ffReleaseClient(clt);
 }
 
 void recvFunc(int epfd, int fd, void *extraData) {
