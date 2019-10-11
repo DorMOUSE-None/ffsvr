@@ -244,10 +244,17 @@ static unsigned int stoi(char *str)
     return value;
 }
 
-static unsigned int primeCnt(unsigned int value) 
+static unsigned int isPrime(unsigned int value)
 {
-    // fatal function TODO:
-    return value;
+	if (value == 2 || value == 3)
+		return 1;
+	if (value % 6 != 1 && value % 6 != 5) 
+		return 0;
+    for (unsigned long long i=5;i*i <= value;i+=6) {
+        if (value % i == 0 || value % (i+2) == 0) 
+            return 0;
+	}
+	return 1;
 }
 
 static int length(unsigned int value) 
@@ -306,9 +313,8 @@ int ffHttpHandle(char *err, ffHttpRequest *request, ffHttpResponse *response)
     p++;
 
     unsigned int value = stoi(request->raw->buf+p);
-    unsigned int pi_n = primeCnt(value);
 
-    sprintf(response->raw->buf, "HTTP/1.0 200 OK\r\nContent-Length: %d\r\nContent-Type: text/plain\r\n\r\n%u=%u\r\n", length(value) + length(pi_n) + 3, value, pi_n);
+    sprintf(response->raw->buf, "HTTP/1.0 200 OK\r\nContent-Length: %d\r\nContent-Type: text/plain\r\n\r\n%u=%u\r\n", length(value) + 4, value, isPrime(value));
     response->raw->len = strlen(response->raw->buf);
     return FF_HTTP_OK;
 }
